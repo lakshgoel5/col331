@@ -79,9 +79,9 @@ int
 filestat(struct file *f, struct stat *st)
 {
   if(f->type == FD_INODE){
-    ilock(f->ip); // <-- Lock instead of iread
+    ilock(f->ip);
     stati(f->ip, st);
-    iunlock(f->ip); // <-- Unlock when done
+    iunlock(f->ip);
     return 0;
   }
   return -1;
@@ -96,10 +96,10 @@ fileread(struct file *f, char *addr, int n)
   if(f->readable == 0)
     return -1;
   if(f->type == FD_INODE){
-    ilock(f->ip); // <-- Lock instead of iread
+    ilock(f->ip);
     if((r = readi(f->ip, addr, f->off, n)) > 0)
       f->off += r;
-    iunlock(f->ip); // <-- Unlock when done
+    iunlock(f->ip);
     return r;
   }
   panic("fileread");
@@ -123,10 +123,10 @@ filewrite(struct file *f, char *addr, int n)
         n1 = max;
 
       begin_op();
-      ilock(f->ip); // <-- Lock instead of iread
+      ilock(f->ip);
       if ((r = writei(f->ip, addr + i, f->off, n1)) > 0)
         f->off += r;
-      iunlock(f->ip); // <-- Unlock when done
+      iunlock(f->ip);
       end_op();
 
       if(r < 0)
@@ -168,7 +168,7 @@ unlink(char* path, char* name)
     return -1;
   }
 
-  ilock(dp); // <-- Lock parent directory
+  ilock(dp);
 
   // Cannot unlink "." or "..".
   if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
@@ -177,7 +177,7 @@ unlink(char* path, char* name)
   if((ip = dirlookup(dp, name, &off)) == 0)
     goto bad;
   
-  ilock(ip); // <-- Lock target file
+  ilock(ip);
 
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
@@ -193,17 +193,17 @@ unlink(char* path, char* name)
     dp->nlink--;
     iupdate(dp);
   }
-  iunlockput(dp); // <-- Safe unlock and release
+  iunlockput(dp);
 
   ip->nlink--;
   iupdate(ip);
-  iunlockput(ip); // <-- Safe unlock and release
+  iunlockput(ip);
 
   end_op();
   return 0;
 
 bad:
-  iunlockput(dp); // <-- Safe unlock and release
+  iunlockput(dp);
   end_op();
   return -1;
 }
@@ -217,11 +217,11 @@ create(char *path, short type, short major, short minor)
   if((dp = nameiparent(path, name)) == 0)
     return 0;
   
-  ilock(dp); // <-- Lock directory
+  ilock(dp);
 
   if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
-    ilock(ip); // <-- Lock target file
+    ilock(ip);
     if(type == T_FILE && ip->type == T_FILE)
       return ip;
     iunlockput(ip);
@@ -231,7 +231,7 @@ create(char *path, short type, short major, short minor)
   if((ip = ialloc(dp->dev, type)) == 0)
     panic("create: ialloc");
 
-  ilock(ip); // <-- Lock new file
+  ilock(ip);
   ip->major = major;
   ip->minor = minor;
   ip->nlink = 1;
@@ -270,7 +270,7 @@ open(char* path, int omode)
       end_op();
       return 0;
     }
-    ilock(ip); // <-- Lock the file
+    ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
@@ -280,7 +280,7 @@ open(char* path, int omode)
 
   struct file* f;
   if((f = filealloc()) == 0) { 
-    iunlockput(ip); // <-- Safe unlock and release
+    iunlockput(ip);
     end_op();
     return 0;
   }
@@ -291,7 +291,7 @@ open(char* path, int omode)
   f->readable = !(omode & O_WRONLY);
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
   
-  iunlock(ip); // <-- Safely unlock before returning the file struct
+  iunlock(ip);
   end_op();
   return f;
 }
