@@ -5,37 +5,35 @@
 #include "types.h"
 #include "defs.h"
 #include "param.h"
+#include "sleeplock.h"
 #include "fs.h"
 #include "file.h"
 #include "stat.h"
 #include "fcntl.h"
-#include "spinlock.h"
 
 struct devsw devsw[NDEV];
 struct {
   struct file file[NFILE];
-  struct spinlock lock;
 } ftable;
 
 void
 fileinit(void)
 {
-  initlock(&ftable.lock, "ftable");
 }
 // Allocate a file structure.
 struct file*
 filealloc(void)
 {
   struct file *f;
-  acquire(&ftable.lock);
+  pushcli();
   for(f = ftable.file; f < ftable.file + NFILE; f++){
     if(f->ref == 0){
       f->ref = 1;
-      release(&ftable.lock);
+      popcli();
       return f;
     }
   }
-  release(&ftable.lock);
+  popcli();
   return 0;
 }
 
@@ -43,11 +41,11 @@ filealloc(void)
 struct file*
 filedup(struct file *f)
 {
-  acquire(&ftable.lock);
+  pushcli();
   if(f->ref < 1)
     panic("filedup");
   f->ref++;
-  release(&ftable.lock);
+  popcli();
   return f;
 }
 
@@ -57,17 +55,17 @@ fileclose(struct file *f)
 {
   struct file ff;
 
-  acquire(&ftable.lock);
+  pushcli();
   if(f->ref < 1)
     panic("fileclose");
   if(--f->ref > 0){
-    release(&ftable.lock);
+    popcli();
     return;
   }
   ff = *f;
   f->ref = 0;
   f->type = FD_NONE;
-  release(&ftable.lock);
+  popcli();
 
   if(ff.type == FD_INODE){
     begin_op();
@@ -81,8 +79,9 @@ int
 filestat(struct file *f, struct stat *st)
 {
   if(f->type == FD_INODE){
-    iread(f->ip);
+    ilock(f->ip);
     stati(f->ip, st);
+    iunlock(f->ip);
     return 0;
   }
   return -1;
@@ -97,9 +96,10 @@ fileread(struct file *f, char *addr, int n)
   if(f->readable == 0)
     return -1;
   if(f->type == FD_INODE){
-    iread(f->ip);
+    ilock(f->ip);
     if((r = readi(f->ip, addr, f->off, n)) > 0)
       f->off += r;
+    iunlock(f->ip);
     return r;
   }
   panic("fileread");
@@ -122,10 +122,11 @@ filewrite(struct file *f, char *addr, int n)
       if(n1 > max)
         n1 = max;
 
-			begin_op();
-      iread(f->ip);
+      begin_op();
+      ilock(f->ip);
       if ((r = writei(f->ip, addr + i, f->off, n1)) > 0)
         f->off += r;
+      iunlock(f->ip);
       end_op();
 
       if(r < 0)
@@ -154,7 +155,6 @@ isdirempty(struct inode *dp)
   }
   return 1;
 }
-
 int
 unlink(char* path, char* name)
 {
@@ -162,13 +162,13 @@ unlink(char* path, char* name)
   struct dirent de;
   uint off;
 
-	begin_op();
+  begin_op();
   if((dp = nameiparent(path, name)) == 0){
     end_op();
     return -1;
   }
 
-  iread(dp);
+  ilock(dp);
 
   // Cannot unlink "." or "..".
   if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
@@ -176,12 +176,13 @@ unlink(char* path, char* name)
 
   if((ip = dirlookup(dp, name, &off)) == 0)
     goto bad;
-  iread(ip);
+  
+  ilock(ip);
 
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
   if(ip->type == T_DIR && !isdirempty(ip)){
-    iput(ip);
+    iunlockput(ip);
     goto bad;
   }
 
@@ -192,17 +193,17 @@ unlink(char* path, char* name)
     dp->nlink--;
     iupdate(dp);
   }
-  iput(dp);
+  iunlockput(dp);
 
   ip->nlink--;
   iupdate(ip);
-  iput(ip);
+  iunlockput(ip);
 
   end_op();
   return 0;
 
 bad:
-  iput(dp);
+  iunlockput(dp);
   end_op();
   return -1;
 }
@@ -215,21 +216,22 @@ create(char *path, short type, short major, short minor)
 
   if((dp = nameiparent(path, name)) == 0)
     return 0;
-  iread(dp);
+  
+  ilock(dp);
 
   if((ip = dirlookup(dp, name, 0)) != 0){
-    iput(dp);
-    iread(ip);
+    iunlockput(dp);
+    ilock(ip);
     if(type == T_FILE && ip->type == T_FILE)
       return ip;
-    iput(ip);
+    iunlockput(ip);
     return 0;
   }
 
   if((ip = ialloc(dp->dev, type)) == 0)
     panic("create: ialloc");
 
-  iread(ip);
+  ilock(ip);
   ip->major = major;
   ip->minor = minor;
   ip->nlink = 1;
@@ -238,7 +240,6 @@ create(char *path, short type, short major, short minor)
   if(type == T_DIR){  // Create . and .. entries.
     dp->nlink++;  // for ".."
     iupdate(dp);
-    // No ip->nlink++ for ".": avoid cyclic ref count.
     if(dirlink(ip, ".", ip->inum) < 0 || dirlink(ip, "..", dp->inum) < 0)
       panic("create dots");
   }
@@ -246,11 +247,10 @@ create(char *path, short type, short major, short minor)
   if(dirlink(dp, name, ip->inum) < 0)
     panic("create: dirlink");
 
-  iput(dp);
+  iunlockput(dp);
 
-  return ip;
+  return ip; // Returns with ip locked!
 }
-
 
 struct file*
 open(char* path, int omode)
@@ -270,9 +270,9 @@ open(char* path, int omode)
       end_op();
       return 0;
     }
-    iread(ip);
+    ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
-      iput(ip);
+      iunlockput(ip);
       end_op();
       return 0;
     }
@@ -280,7 +280,7 @@ open(char* path, int omode)
 
   struct file* f;
   if((f = filealloc()) == 0) { 
-    iput(ip);
+    iunlockput(ip);
     end_op();
     return 0;
   }
@@ -290,6 +290,8 @@ open(char* path, int omode)
   f->off = 0;
   f->readable = !(omode & O_WRONLY);
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+  
+  iunlock(ip);
   end_op();
   return f;
 }

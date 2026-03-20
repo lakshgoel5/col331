@@ -1,6 +1,7 @@
 #include "types.h"
 #include "defs.h"
 #include "x86.h"
+#include "sleeplock.h"  
 #include "fs.h"
 #include "buf.h"
 #include "param.h"
@@ -30,7 +31,6 @@ main(void)
   fileinit();      // file table
   idtinit();       // load idt register
   sti();           // enable interrupts
-
   seginit();       // segment descriptors
   pinit();         // first process
   scheduler();     // start running processes
