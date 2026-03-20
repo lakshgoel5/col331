@@ -1,5 +1,4 @@
 struct buf;
-struct rtcdate;
 struct superblock;
 struct inode;
 struct stat;
@@ -57,7 +56,6 @@ extern uchar    ioapicid;
 void            ioapicinit(void);
 
 // lapic.c
-void            cmostime(struct rtcdate *r);
 int             lapicid(void);
 extern volatile uint*    lapic;
 void            lapiceoi(void);
