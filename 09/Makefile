@@ -1,6 +1,6 @@
 CFLAGS=-fcf-protection=none -fno-asynchronous-unwind-tables -m32 -fno-pie -no-pie -O3
 
-EXECS=threads-safe peterson-breaks peterson-does-not-break mfence-perf swfence-perf peterson-fence atomic wait-attempt1 wait-attempt2 wait mypipe alloc-attempt1 alloc semlock wait-sem sempipe sem-mpmc dine-dead dine rw-ctr rw-using-sems sems-using-lock-cv dead dead-fix
+EXECS=threads-safe peterson-breaks mfence-perf swfence-perf peterson-fence atomic wait-attempt1 wait-attempt2 wait mypipe alloc-attempt1 alloc semlock wait-sem sempipe sem-mpmc dine-dead dine rw-ctr rw-using-sems sems-using-lock-cv dead dead-fix
 
 all: $(EXECS)
 
@@ -13,10 +13,6 @@ threads-safe: threads-safe.c common.h common_threads.h
 peterson-breaks: peterson-breaks.c common.h common_threads.h
 	gcc $(CFLAGS) -S peterson-breaks.c -Wall -pthread
 	gcc $(CFLAGS) -o peterson-breaks peterson-breaks.c -Wall -pthread
-
-peterson-does-not-break: peterson-does-not-break.c common.h common_threads.h
-	gcc $(CFLAGS) -S peterson-does-not-break.c -Wall -pthread
-	gcc $(CFLAGS) -o peterson-does-not-break peterson-does-not-break.c -Wall -pthread
 
 mfence-perf: mfence-perf.c common.h common_threads.h
 	gcc $(CFLAGS) -S mfence-perf.c -Wall -pthread
