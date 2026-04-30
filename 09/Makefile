@@ -1,4 +1,4 @@
-CFLAGS=-fcf-protection=none -fno-asynchronous-unwind-tables -m32 -fno-pie -no-pie -O2
+CFLAGS=-fcf-protection=none -fno-asynchronous-unwind-tables -m32 -fno-pie -no-pie -O3
 
 EXECS=threads-safe peterson-breaks peterson-does-not-break mfence-perf swfence-perf peterson-fence atomic wait-attempt1 wait-attempt2 wait mypipe alloc-attempt1 alloc semlock wait-sem sempipe sem-mpmc dine-dead dine rw-ctr rw-using-sems sems-using-lock-cv dead dead-fix
 
@@ -51,6 +51,9 @@ alloc-attempt1: alloc-attempt1.c common.h common_threads.h
 
 alloc: alloc.c common.h common_threads.h
 	gcc $(CFLAGS) -o alloc alloc.c -Wall -pthread
+
+alloc-attempt1: alloc-attempt1.c common.h common_threads.h
+	gcc $(CFLAGS) -o alloc-attempt1 alloc-attempt1.c -Wall -pthread
 
 semlock: semlock.c common.h common_threads.h
 	gcc $(CFLAGS) -o semlock semlock.c -Wall -pthread
